@@ -510,45 +510,6 @@ void Mainmenu() {
   }
 }
 
-// void suhuPID(float target) {
-//   if (target > 0) {
-//     static uint32_t lastTime = 0;
-
-//     uint32_t now = millis();
-//     uint32_t deltaTime = now - lastTime;
-
-//     if (deltaTime >= setting.Ts) {
-//       float suhu = readSuhu();
-//       float dT = deltaTime / 1000.0;
-
-//       // Hitung selisih
-//       float selisih = target - suhu;
-//       float targetPID = target;
-//       if (target > 90) error = target - suhu;
-//       else if (target > 80) error = (target - 0.75) - suhu;
-//       else if (target > 60) error = (target - 1) - suhu;
-//       else if (target > 40) error = (target - 1.5) - suhu;
-//       else error = (target - 2) - suhu;
-
-//       P = setting.Kp * error;
-//       if (abs(error) < 0.75) I = I * 0.5;
-//       else I += setting.Ki * error * dT;
-//       I = constrain(I, 0, 100);  // ← anti windup
-//       D = setting.Kd * (error - prevousError) / dT;
-//       output = constrain(P + I + D, 0, 100);
-
-//       prevousError = error;
-//       lastTime = now;
-//     }
-//   } else {
-//     output = 0;
-//     P = 0;
-//     I = 0;
-//     D = 0;
-//     prevousError = 0;
-//   }
-// }
-
 void suhuPID(float target) {
   if (target > 0) {
 
@@ -579,12 +540,6 @@ void suhuPID(float target) {
         lastTarget = target;
       }
 
-      // Jika masih Mode 1 dan sudah dekat target,
-      // pindah ke Mode 2
-      if (abs(error) < 0.5) {
-        modeJauh = 2;
-      }
-
       // Hitung error berdasarkan mode
       if (modeJauh == 0) {
 
@@ -610,6 +565,10 @@ void suhuPID(float target) {
         else if (target > 60) error = (target - 1.5) - suhu;
         else if (target > 40) error = (target - 2) - suhu;
         else error = (target - 2.5) - suhu;
+      }
+
+      if (abs(error) < 0.5) {
+        modeJauh = 2;
       }
 
       // PID
