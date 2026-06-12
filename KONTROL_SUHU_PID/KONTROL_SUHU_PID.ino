@@ -7,7 +7,7 @@
 
 #include "LM35.h"
 #include "Encoder.h"
-// #include "BuzzLed.h"
+#include "BuzzLed.h"
 #include "Dimmer.h"
 
 Adafruit_SH1106 lcd(-1, -1);
@@ -160,10 +160,8 @@ void Mainmenu() {
     if (setting.KondisiAlat == 0) {
       if (readButton() == 1) setting.KondisiAlat = 1;
     } else {
-
       if (readButton() == 2) setting.KondisiAlat = 0;
     }
-
 
     lcd.fillRoundRect(0, 0, 27, 13, 1, 1);
 
@@ -179,8 +177,13 @@ void Mainmenu() {
 
   if (JD)
     lcd.drawRoundRect(30, 0, 98, 13, 1, 1);
-  else
+  else {
+    if (readButton() == 2) {
+      delay(200);
+      ESP.restart();
+    }
     lcd.fillRoundRect(30, 0, 98, 13, 1, 1);
+  }
   scrollText("Pemanas Air Otomatis Berbasis Kendali PID _ Teknik Elektro K2", 3, 1, JD);
 
 
@@ -530,55 +533,59 @@ void suhuPID(float target) {
 
         float selisih = target - suhu;
 
-        if (selisih > 20)
+        if (selisih >= 20)
           modeJauh = 0;  // Mode 1
-        else if (selisih > 10)
+        else if (selisih >= 12)
           modeJauh = 1;  // Mode 2
-        else
+        else if (selisih >= 5)
           modeJauh = 2;  // Mode 3
+        else modeJauh = 3;
 
         lastTarget = target;
       }
 
-      // Hitung error berdasarkan mode
-      if (modeJauh == 0) {
-
-        // MODE 1
-        if (target > 90) error = (target - 3.0) - suhu;
-        else if (target > 80) error = (target - 4.0) - suhu;
-        else if (target > 60) error = (target - 4.5) - suhu;
-        else if (target > 40) error = (target - 5.0) - suhu;
-
-      } else if (modeJauh == 1) {
-
-        // MODE 2
-        if (target > 90) error = (target - 2.0) - suhu;
-        else if (target > 80) error = (target - 3.5) - suhu;
-        else if (target > 60) error = (target - 4.5) - suhu;
-        else if (target > 40) error = (target - 5.0) - suhu;
-
-      } else if (modeJauh == 2) {
-
-        // MODE 3
-        if (target > 90) error = target - suhu;
-        else if (target > 80) error = (target - 1) - suhu;
-        else if (target > 60) error = (target - 1.5) - suhu;
-        else if (target > 40) error = (target - 2) - suhu;
-        else error = (target - 2.5) - suhu;
+      if ((target - suhu) < 0.35) {
+        modeJauh = 3;
       }
 
-      if (abs(error) < 0.5) {
-        modeJauh = 2;
+      // Hitung error berdasarkan mode
+      if (modeJauh == 0) {  // MODE 1
+        if (target > 90) error = (target - 3.0) - suhu;
+        else if (target > 80) error = (target - 3.5) - suhu;
+        else if (target > 60) error = (target - 4.0) - suhu;
+        else if (target > 40) error = (target - 4.5) - suhu;
+      } else if (modeJauh == 1) {  // MODE 2
+        if (target > 90) error = (target - 1.5) - suhu;
+        else if (target > 80) error = (target - 1.8) - suhu;
+        else if (target > 60) error = (target - 2.3) - suhu;
+        else if (target > 40) error = (target - 2.5) - suhu;
+      } else if (modeJauh == 2) {  // MODE 3
+        if (target > 90) error = target - suhu;
+        else if (target > 80) error = (target - 0.5) - suhu;
+        else if (target > 60) error = (target - 1.0) - suhu;
+        else if (target > 40) error = (target - 1.5) - suhu;
+        else error = (target - 1.5) - suhu;
+      } else if (modeJauh == 3) {
+        error = target - suhu;
       }
 
       // PID
       P = setting.Kp * error;
 
       // Integral decay
-      if (abs(error) < 0.2) I *= 0.6;
-      else if (abs(error) < 0.6) I *= 0.7;
-      else if (abs(error) < 1) I *= 0.8;
-      else I += setting.Ki * error * dT;
+      if (modeJauh < 3) {
+        I += setting.Ki * error * dT;
+        if (abs(error) < 0.1) I *= 0.5;
+        else if (abs(error) < 0.5) I *= 0.6;
+        else if (abs(error) < 1) I *= 0.7;
+        else if (abs(error) < 1.5) I *= 0.8;
+        else if (abs(error) < 2) I *= 0.9;
+      } else {
+        I += setting.Ki * error * dT;
+        if (abs(error) < 0.1) I *= 0.5;
+        else if (abs(error) < 0.5) I *= 0.7;
+        else if (abs(error) < 1) I *= 0.9;
+      }
 
       I = constrain(I, 0, 100);
 
@@ -592,7 +599,6 @@ void suhuPID(float target) {
       prevousError = error;
       lastTime = now;
     }
-
   } else {
 
     output = 0;
@@ -632,53 +638,72 @@ void serialPlotter() {
   Serial.println(output / 2);
 }
 
-void sendTelemetry() {
-  TelemetryData_t data;
+void terimaParameterGUI() {
+  if (Serial.available() > 0) {
+    // Baca satu baris data serial hingga menemukan karakter newline '\n'
+    String inputStr = Serial.readStringUntil('\n');
+    inputStr.trim();  // Hapus spasi kosong di awal dan akhir string
 
-  data.tick_ms = millis();
-  data.setpoint = setting.SetPoint;
-  data.temp = readSuhu();
-  data.kp = setting.Kp;
-  data.ki = setting.Ki;
-  data.kd = setting.Kd;
-  data.dimming = output;
+    // Pastikan string tidak kosong sebelum diproses
+    if (inputStr.length() == 0) return;
 
-  Serial.write("SOF", 3);
+    // Cari posisi index/tag masing-masing parameter
+    int spIdx = inputStr.indexOf("SP:");
+    int tsIdx = inputStr.indexOf(",TS:");
+    int kpIdx = inputStr.indexOf(",KP:");
+    int kiIdx = inputStr.indexOf(",KI:");
+    int kdIdx = inputStr.indexOf(",KD:");
 
-  uint8_t len = sizeof(data);
-  Serial.write(&len, 1);
+    // Validasi: pastikan semua tag parameter ditemukan di dalam string
+    if (spIdx != -1 && tsIdx != -1 && kpIdx != -1 && kiIdx != -1 && kdIdx != -1) {
 
-  Serial.write((uint8_t *)&data, sizeof(data));
+      // Ekstrak nilai Setpoint (SP) di antara "SP:" dan ",TS:"
+      setting.SetPoint = inputStr.substring(spIdx + 3, tsIdx).toFloat();
 
-  uint8_t crc = 0;
-  Serial.write(&crc, 1);
+      // Ekstrak nilai Sampling Time (Ts) di antara ",TS:" dan ",KP:"
+      setting.Ts = inputStr.substring(tsIdx + 4, kpIdx).toFloat();
+
+      // Ekstrak nilai Kp di antara ",KP:" dan ",KI:"
+      setting.Kp = inputStr.substring(kpIdx + 4, kiIdx).toFloat();
+
+      // Ekstrak nilai Ki di antara ",KI:" dan ",KD:"
+      setting.Ki = inputStr.substring(kiIdx + 4, kdIdx).toFloat();
+
+      // Ekstrak nilai Kd dari posisi setelah ",KD:" hingga akhir string
+      setting.Kd = inputStr.substring(kdIdx + 4).toFloat();
+
+      // Proteksi pengaman batas nilai setpoint sesuai spesifikasi (30 - 99 °C)
+      if (setting.SetPoint < 30.0) setting.SetPoint = 30.0;
+      if (setting.SetPoint > 99.0) setting.SetPoint = 99.0;
+
+      // Proteksi pengaman batas minimum Sampling Time agar sistem tidak crash
+      if (setting.SetPoint < 0.1) setting.SetPoint = 0.1;
+      writeEEPROM();
+    }
+  }
 }
 
-bool receiveCommand() {
-  static uint8_t buffer[32];
-
-  if (Serial.available() < 21)
-    return false;
-
-  Serial.readBytes((char *)buffer, 21);
-
-  if (memcmp(buffer, "CMD", 3) != 0)
-    return false;
-
-  uint8_t len = buffer[3];
-
-  if (len != sizeof(CommandData_t))
-    return false;
-
-  CommandData_t cmd;
-  memcpy(&cmd, &buffer[4], sizeof(cmd));
-
-  setting.Kp = cmd.kp;
-  setting.Ki = cmd.ki;
-  setting.Kd = cmd.kd;
-  setting.SetPoint = cmd.setpoint;
-
-  return true;
+void kirimTelemetryGUI() {
+  // Gunakan Serial.print dengan separator koma
+  Serial.print(readSuhu(), 2);  // 1. Mengirim suhu aktual (2 angka desimal)
+  Serial.print(",");
+  Serial.print(setting.SetPoint, 1);  // 2. Mengirim setpoint aktif (1 angka desimal)
+  Serial.print(",");
+  Serial.print(P, 2);  // 3. Mengirim komponen P
+  Serial.print(",");
+  Serial.print(I, 2);  // 4. Mengirim komponen I
+  Serial.print(",");
+  Serial.print(D, 2);  // 5. Mengirim komponen D
+  Serial.print(",");
+  Serial.print(output, 1);  // 6. Mengirim % output dimmer
+  Serial.print(",");
+  Serial.print(setting.Kp, 2);  // 7. Tambahan: Mengirim nilai Kp aktif alat ke GUI
+  Serial.print(",");
+  Serial.print(setting.Ki, 2);  // 8. Tambahan: Mengirim nilai Ki aktif alat ke GUI
+  Serial.print(",");
+  Serial.print(setting.Kd, 2);  // 9. Tambahan: Mengirim nilai Kd aktif alat ke GUI
+  Serial.print(",");
+  Serial.println(setting.Ts, 1);  // 10. Tambahan: Mengirim nilai Ts aktif alat ke GUI (akhiri \n)
 }
 
 void setup() {
@@ -706,19 +731,17 @@ void setup() {
 }
 
 void loop() {
-  receiveCommand();
-
   if (setting.KondisiAlat) {
     suhuPID(setting.SetPoint);
     blink99x();
   } else suhuPID(0);
   dimmer(output);
-
+  terimaParameterGUI();
   static uint32_t lastSend = 0;
 
   if (millis() - lastSend >= 100) {
     lastSend = millis();
-    sendTelemetry();
+    kirimTelemetryGUI();
   }
 
   lcd.clearDisplay();

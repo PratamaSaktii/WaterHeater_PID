@@ -20,7 +20,7 @@ void blink99x() {
   static uint32_t t = 0;
   static byte cnt = 0;
 
-  if (millis() - t >= (cnt < 10 ? 20 : 300)) {
+  if (millis() - t >= (cnt < 10 ? 10 : 200)) {
 
     t = millis();
 
