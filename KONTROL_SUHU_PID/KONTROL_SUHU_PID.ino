@@ -575,16 +575,16 @@ void suhuPID(float target) {
       // Integral decay
       if (modeJauh < 3) {
         I += setting.Ki * error * dT;
-        if (abs(error) < 0.1) I *= 0.5;
-        else if (abs(error) < 0.5) I *= 0.6;
-        else if (abs(error) < 1) I *= 0.7;
-        else if (abs(error) < 1.5) I *= 0.8;
-        else if (abs(error) < 2) I *= 0.9;
+        if (abs(error) < 0.1) I *= 0.95;
+        else if (abs(error) < 0.5) I *= 0.9;
+        else if (abs(error) < 1) I *= 0.8;
+        else if (abs(error) < 1.5) I *= 0.7;
+        else if (abs(error) < 2) I *= 0.6;
       } else {
         I += setting.Ki * error * dT;
-        if (abs(error) < 0.1) I *= 0.5;
+        if (abs(error) < 0.1) I *= 0.9;
         else if (abs(error) < 0.5) I *= 0.7;
-        else if (abs(error) < 1) I *= 0.9;
+        else if (abs(error) < 1) I *= 0.5;
       }
 
       I = constrain(I, 0, 100);
